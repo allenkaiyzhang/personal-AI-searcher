@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import httpx
 from bs4 import BeautifulSoup
 
@@ -46,6 +48,8 @@ class BingHtmlSearchProvider(SearchProvider):
                 continue
 
             url = normalize_url(raw_url)
+            if not url or ("bing.com" in url.lower() and urlparse(url).path.startswith("/ck/a")):
+                continue
             if url in seen_urls:
                 continue
 
