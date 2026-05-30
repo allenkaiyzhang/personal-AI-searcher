@@ -1,0 +1,79 @@
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class TopicCreate(BaseModel):
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    description: str | None = None
+
+
+class TopicRead(BaseModel):
+    id: int
+    name: str
+    aliases: list[str]
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EvidenceRead(BaseModel):
+    id: int
+    topic_id: int
+    claim: str
+    summary: str
+    excerpt: str
+    source_title: str
+    source_url: str
+    source_domain: str
+    published_at: datetime | None
+    retrieved_at: datetime
+    confidence: float
+    novelty: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TimelineEventRead(BaseModel):
+    id: int
+    topic_id: int
+    event_date: datetime
+    title: str
+    description: str
+    importance: float
+    evidence_id: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InsightRead(BaseModel):
+    id: int
+    topic_id: int
+    current_view: str
+    confidence: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ResearchRequest(BaseModel):
+    query: str
+    topic_hint: str | None = None
+    max_results: int = Field(default=5, ge=1, le=20)
+    use_memory: bool = True
+    update_memory: bool = True
+
+
+class ResearchResponse(BaseModel):
+    matched_topic: str | None
+    old_view: str | None
+    answer: str
+    view_changed: bool
+    timeline_updates: list[TimelineEventRead]
+    new_evidence: list[EvidenceRead]
+    confidence: str
