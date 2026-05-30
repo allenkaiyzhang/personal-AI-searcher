@@ -26,6 +26,45 @@ The MVP intentionally does not use an LLM. Reports are rule-based summaries and 
 
 `POST /research` is the research-memory pipeline. It matches a topic, reuses prior memory, searches, fetches pages, extracts evidence, updates timeline events, may update insights, and records the research run. Use `/research` when results should become durable evidence and timeline history.
 
+## DeepSeek Query Rewrite
+
+Query rewrite is optional and disabled by default. When enabled, DeepSeek is used only to rewrite a poor user query into one to three search-engine-friendly queries. It does not answer the question, does not generate factual conclusions, and its `reason` field should be treated only as debug metadata. Final search results still come from real Bing search results.
+
+Environment variables:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+ENABLE_QUERY_REWRITE=0
+```
+
+Enable it for a shell session:
+
+```bash
+export DEEPSEEK_API_KEY="your-api-key"
+export ENABLE_QUERY_REWRITE=1
+```
+
+For `systemd` deployments, set these values through a service override or service environment, then restart the service:
+
+```bash
+sudo systemctl restart personal-ai-searcher
+```
+
+Example `/search` request with query rewrite:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query":"How to speak VAT in CHinese",
+    "max_results":5,
+    "market":"en-US",
+    "rewrite_query":true
+  }' | python3 -m json.tool
+```
+
 ## Install
 
 ```bash
@@ -157,7 +196,7 @@ Raw search:
 ```bash
 curl -X POST http://127.0.0.1:8000/search \
   -H "Content-Type: application/json" \
-  -d "{\"query\":\"OpenAI API web search\",\"max_results\":5,\"market\":\"en-US\"}"
+  -d "{\"query\":\"OpenAI API web search\",\"max_results\":5,\"market\":\"en-US\",\"rewrite_query\":false}"
 ```
 
 ```bash

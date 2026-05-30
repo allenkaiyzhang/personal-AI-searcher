@@ -8,6 +8,7 @@ from app.db.session import SessionLocal
 from app.main import app
 from app.providers.base import SearchResult
 from app.providers.bing_html import BingHtmlSearchProvider
+from app.schemas import RewrittenQuery
 
 
 def _table_counts() -> dict[str, int]:
@@ -48,6 +49,14 @@ def test_search_returns_structured_results(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json() == {
         "query": "OpenAI API web search",
+        "rewritten_queries": [
+            {
+                "query": "OpenAI API web search",
+                "market": "en-US",
+                "language": None,
+                "reason": "original query",
+            }
+        ],
         "results": [
             {
                 "title": "OpenAI API search docs",
@@ -75,7 +84,18 @@ def test_search_returns_empty_results(monkeypatch) -> None:
     response = client.post("/search", json={"query": "temporary search"})
 
     assert response.status_code == 200
-    assert response.json() == {"query": "temporary search", "results": []}
+    assert response.json() == {
+        "query": "temporary search",
+        "rewritten_queries": [
+            {
+                "query": "temporary search",
+                "market": "en-US",
+                "language": None,
+                "reason": "original query",
+            }
+        ],
+        "results": [],
+    }
 
 
 def test_search_rejects_blank_query() -> None:
@@ -128,3 +148,73 @@ def test_search_does_not_write_research_memory_tables(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert _table_counts() == before
+
+
+def test_search_rewrite_merges_and_deduplicates_results(monkeypatch) -> None:
+    async def fake_rewrite(self, query: str, market: str | None = None) -> list[RewrittenQuery]:
+        return [
+            RewrittenQuery(
+                query="VAT Chinese translation",
+                market="en-US",
+                language="en",
+                reason="Clarifies translation intent.",
+            ),
+            RewrittenQuery(
+                query="增值税 VAT 中文怎么说",
+                market="zh-CN",
+                language="zh",
+                reason="Adds Chinese query phrasing.",
+            ),
+        ]
+
+    async def fake_search(
+        self: BingHtmlSearchProvider,
+        query: str,
+        max_results: int,
+        market: str | None = None,
+    ) -> list[SearchResult]:
+        if query == "VAT Chinese translation":
+            return [
+                SearchResult(
+                    title="VAT translation",
+                    url="https://example.com/vat",
+                    snippet="VAT is commonly translated as value-added tax.",
+                )
+            ]
+        return [
+            SearchResult(
+                title="VAT translation duplicate",
+                url="https://example.com/vat/",
+                snippet="Duplicate URL should be removed.",
+            ),
+            SearchResult(
+                title="增值税",
+                url="https://example.com/zh/vat",
+                snippet="VAT 的中文常见说法。",
+            ),
+        ]
+
+    monkeypatch.setattr("app.main.QueryRewriter.rewrite", fake_rewrite)
+    monkeypatch.setattr(BingHtmlSearchProvider, "search", fake_search)
+    client = TestClient(app)
+
+    response = client.post(
+        "/search",
+        json={
+            "query": "How to speak VAT in CHinese",
+            "max_results": 5,
+            "market": "en-US",
+            "rewrite_query": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["query"] for item in body["rewritten_queries"]] == [
+        "VAT Chinese translation",
+        "增值税 VAT 中文怎么说",
+    ]
+    assert [item["url"] for item in body["results"]] == [
+        "https://example.com/vat",
+        "https://example.com/zh/vat",
+    ]

@@ -9,7 +9,7 @@ curl -fsS "$BASE_URL/health" >/dev/null
 echo "==> Checking search endpoint"
 SEARCH_RESPONSE="$(curl -fsS \
   -H "Content-Type: application/json" \
-  -d '{"query":"OpenAI API web search","max_results":5,"market":"en-US"}' \
+  -d '{"query":"OpenAI API web search","max_results":5,"market":"en-US","rewrite_query":false}' \
   "$BASE_URL/search")"
 
 printf '%s' "$SEARCH_RESPONSE" | grep '"results"' >/dev/null
@@ -29,6 +29,21 @@ elif printf '%s' "$VAT_FIRST_URL" | grep 'bing.com/ck/a' >/dev/null; then
   exit 1
 else
   echo "==> Search URL normalization check passed"
+fi
+
+if [ "${DEEPSEEK_API_KEY:-}" ] && [ "${ENABLE_QUERY_REWRITE:-0}" = "1" ]; then
+  echo "==> Checking search endpoint with query rewrite"
+  if REWRITE_RESPONSE="$(curl -fsS \
+    -H "Content-Type: application/json" \
+    -d '{"query":"How to speak VAT in CHinese","max_results":5,"market":"en-US","rewrite_query":true}' \
+    "$BASE_URL/search")"; then
+    printf '%s' "$REWRITE_RESPONSE" | grep '"rewritten_queries"' >/dev/null
+    echo "==> Query rewrite smoke check passed"
+  else
+    echo "==> Warning: query rewrite smoke check failed; continuing because external LLM access is optional"
+  fi
+else
+  echo "==> Skipping query rewrite smoke check because DEEPSEEK_API_KEY is empty or ENABLE_QUERY_REWRITE is not 1"
 fi
 
 echo "==> Smoke test completed successfully"

@@ -8,11 +8,14 @@ from sqlalchemy.orm import Session
 from app.db.init_db import init_db
 from app.db.repository import Repository
 from app.db.session import get_db
+from app.pipeline.query_rewriter import QueryRewriter
 from app.pipeline.research_pipeline import ResearchPipeline
+from app.providers.base import SearchResult
 from app.providers.bing_html import BingHtmlSearchProvider
 from app.schemas import (
     ResearchRequest,
     ResearchResponse,
+    RewrittenQuery,
     SearchRequest,
     SearchResponse,
     SearchResultRead,
@@ -20,6 +23,7 @@ from app.schemas import (
     TopicCreate,
     TopicRead,
 )
+from app.utils.normalize import normalize_url
 
 
 @asynccontextmanager
@@ -54,8 +58,14 @@ def get_timeline(topic_id: int, db: Session = Depends(get_db)) -> list[TimelineE
 @app.post("/search", response_model=SearchResponse)
 async def search(payload: SearchRequest) -> SearchResponse:
     provider = BingHtmlSearchProvider()
+    rewritten_queries = (
+        await QueryRewriter().rewrite(payload.query, payload.market)
+        if payload.rewrite_query
+        else [RewrittenQuery(query=payload.query, market=payload.market, language=None, reason="original query")]
+    )
+
     try:
-        results = await provider.search(payload.query, payload.max_results, payload.market)
+        results = await _run_search_queries(provider, rewritten_queries, payload.max_results)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="Search provider request failed") from exc
 
@@ -71,7 +81,34 @@ async def search(payload: SearchRequest) -> SearchResponse:
             )
             for index, result in enumerate(results, start=1)
         ],
+        rewritten_queries=rewritten_queries,
     )
+
+
+async def _run_search_queries(
+    provider: BingHtmlSearchProvider,
+    rewritten_queries: list[RewrittenQuery],
+    max_results: int,
+) -> list[SearchResult]:
+    results: list[SearchResult] = []
+    seen_urls: set[str] = set()
+
+    for rewritten_query in rewritten_queries:
+        query_results = await provider.search(
+            rewritten_query.query,
+            max_results=max_results,
+            market=rewritten_query.market,
+        )
+        for result in query_results:
+            normalized_url = normalize_url(result.url)
+            if not normalized_url or normalized_url in seen_urls:
+                continue
+            seen_urls.add(normalized_url)
+            results.append(SearchResult(title=result.title, url=normalized_url, snippet=result.snippet))
+            if len(results) >= max_results:
+                return results
+
+    return results
 
 
 @app.post("/research", response_model=ResearchResponse)

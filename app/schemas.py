@@ -67,6 +67,14 @@ class ResearchRequest(BaseModel):
     max_results: int = Field(default=5, ge=1, le=20)
     use_memory: bool = True
     update_memory: bool = True
+    rewrite_query: bool = False
+
+
+class RewrittenQuery(BaseModel):
+    query: str
+    market: str | None = None
+    language: str | None = None
+    reason: str | None = None
 
 
 class ResearchResponse(BaseModel):
@@ -77,12 +85,14 @@ class ResearchResponse(BaseModel):
     timeline_updates: list[TimelineEventRead]
     new_evidence: list[EvidenceRead]
     confidence: str
+    rewritten_queries: list[RewrittenQuery] = Field(default_factory=list)
 
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     max_results: int = Field(default=5, ge=1, le=20)
     market: str | None = "en-US"
+    rewrite_query: bool = False
 
     @field_validator("query")
     @classmethod
@@ -104,3 +114,4 @@ class SearchResultRead(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResultRead]
+    rewritten_queries: list[RewrittenQuery] = Field(default_factory=list)
