@@ -13,6 +13,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - name: Check out repository
@@ -44,6 +46,7 @@ jobs:
       - name: Run tests
         run: |
           . .venv/bin/activate
+          python -c "import app; print(app.__file__)"
           if [ -d tests ]; then
             pytest -q
           else
